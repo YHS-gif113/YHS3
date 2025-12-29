@@ -254,10 +254,12 @@ def show_user_management():
                 with st.form(f"edit_{u.user_id}"):
                     col1, col2 = st.columns(2)
                     with col1:
+                        edit_account = st.text_input("账号", value=u.account_id, key=f"account_{u.user_id}")
                         edit_name = st.text_input("姓名", value=u.name, key=f"name_{u.user_id}")
                         edit_role = st.selectbox("角色", ["学生", "教师", "管理员"], 
                             index=["学生", "教师", "管理员"].index(role_name), key=f"role_{u.user_id}")
                     with col2:
+                        edit_pwd = st.text_input("新密码", type="password", key=f"pwd_{u.user_id}", help="留空则不修改密码")
                         edit_dept = st.text_input("单位", value=u.department or "", key=f"dept_{u.user_id}")
                         edit_email = st.text_input("邮箱", value=u.email, key=f"email_{u.user_id}")
                     
@@ -265,8 +267,11 @@ def show_user_management():
                     with col_a:
                         if st.form_submit_button("保存修改"):
                             role_map = {"学生": "student", "教师": "teacher", "管理员": "admin"}
-                            update_user_info(u.user_id, edit_name, role_map[edit_role], edit_dept, edit_email)
-                            st.success("已保存")
+                            success, msg = update_user_info(u.user_id, edit_account, edit_name, role_map[edit_role], edit_dept, edit_email, edit_pwd)
+                            if success:
+                                st.success(msg)
+                            else:
+                                st.error(msg)
                             st.rerun()
                 
                 # 操作按钮
@@ -306,16 +311,30 @@ def add_user_by_admin(account_id, name, role, department, email, password):
         session.commit()
         return True, "用户添加成功"
 
-def update_user_info(user_id, name, role, department, email):
+def update_user_info(user_id, account_id, name, role, department, email, password=None):
     """更新用户信息"""
     with get_session() as session:
         user = session.get(User, user_id)
         if user:
+            # 检查账号是否与其他用户重复
+            if account_id != user.account_id:
+                existing = session.exec(select(User).where(User.account_id == account_id)).first()
+                if existing:
+                    return False, "账号已被其他用户使用"
+            
+            user.account_id = account_id
             user.name = name
             user.role = role
             user.department = department
             user.email = email
+            
+            # 如果提供了新密码，则更新密码
+            if password and password.strip():
+                user.password_hash = hash_password(password)
+            
             session.commit()
+            return True, "已保存"
+        return False, "用户不存在"
 
 def delete_user_by_id(user_id):
     """删除用户"""
